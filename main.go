@@ -185,5 +185,4 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 		})
 		return
 	}
-
 }
