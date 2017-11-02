@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type Item struct {
 	Title      string
 	Condition  string
 	Price      string
+	Currency   string
 }
 
 var (
@@ -49,12 +51,31 @@ type (
 func main() {
 	//Initialize http router
 	router := httprouter.New()
-	//handler := cors.Default().Handler(router)
 
+	// Use the PORT environment variable
+	port := os.Getenv("PORT")
+	// Default to 3000 if no PORT environment variable was defined
+	if port == "" {
+		port = "8080"
+	}
 	//Routes
 	router.GET("/welcome", handleWelcome)
 	router.POST("/chat", handleChat)
-	log.Fatal(http.ListenAndServe(":8080", cors.CORS(router)))
+	router.GET("/", handle)
+	log.Fatal(http.ListenAndServe(":"+port, cors.CORS(router)))
+}
+
+// handle Handles /
+func handle(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	body :=
+		"<!DOCTYPE html><html><head><title>Chatbot</title></head><body><pre style=\"font-family: monospace;\">\n" +
+			"Available Routes:\n\n" +
+			"  GET  /welcome -> handleWelcome\n" +
+			"  POST /chat    -> handleChat\n" +
+			"  GET  /        -> handle        (current)\n" +
+			"</pre></body></html>"
+	w.Header().Add("Content-Type", "text/html")
+	fmt.Fprintln(w, body)
 }
 
 func handleWelcome(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -115,7 +136,6 @@ func handleChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // writeJSON Writes the JSON equivilant for data into ResponseWriter w
 func writeJSON(w http.ResponseWriter, data JSON) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(data)
 }
 
@@ -130,160 +150,163 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 	if !found {
 		session["searchByKeyword"] = message
 	}
-	//If the value assigned to searchByKeyword is no then the response is the next question otherwise search by the keyword given by the user
-	searchByKeyword := session["searchByKeyword"].(string)
 
-	if !strings.EqualFold(searchByKeyword, "no") {
-		//Filter search by keyword
-		_, found := session["conditionBool"]
-		if !found {
-			session["conditionBool"] = false
-		}
-		_, found2 := session["condition"]
-		if !found2 {
-			//Respond with question about condition
-			if !session["conditionBool"].(bool) {
-				writeJSON(w, JSON{
-					"message": "New, Used or All",
-					"session": session,
-				})
-				session["conditionBool"] = true
-				return
-			} else {
-				session["condition"] = message
+	//Filter search by keyword
+	returnValue := filterByCondition(session, message, w)
+	if returnValue == 1 {
+		return
+	}
+	returnValue2 := filterByMinPrice(session, message, w)
+	if returnValue2 == 1 {
+		return
+	}
+	returnValue3 := filterByMaxPrice(session, message, w)
+	if returnValue3 == 1 {
+		return
+	}
 
-				if strings.EqualFold(session["condition"].(string), "new") {
-					session["condition"] = "New"
-				} else if strings.EqualFold(session["condition"].(string), "used") {
-					session["condition"] = "Used"
-				}
-			}
-		}
+	condition := session["condition"].(string)
 
-		_, found3 := session["minPriceBool"]
-		if !found3 {
-			session["minPriceBool"] = false
-		}
-		_, found4 := session["minPrice"]
-		if !found4 {
-			//Respond with question about condition
-			if !session["minPriceBool"].(bool) {
-				writeJSON(w, JSON{
-					"message": "Min Price or All?",
-					"session": session,
-				})
-				session["minPriceBool"] = true
-				return
-			} else {
-				session["minPrice"] = message
-			}
-		}
+	minPrice := session["minPrice"].(string)
 
-		_, found5 := session["maxPriceBool"]
-		if !found5 {
-			session["maxPriceBool"] = false
-		}
-		_, found6 := session["maxPrice"]
-		if !found6 {
-			//Respond with question about condition
-			if !session["maxPriceBool"].(bool) {
-				writeJSON(w, JSON{
-					"message": "Max Price or All?",
-					"session": session,
-				})
-				session["maxPriceBool"] = true
-				return
-			} else {
-				session["maxPrice"] = message
-			}
-		}
+	maxPrice := session["maxPrice"].(string)
 
-		condition := session["condition"].(string)
+	keyword := strings.Replace(session["searchByKeyword"].(string), " ", "%20", -1)
 
-		minPrice := session["minPrice"].(string)
+	numOfResults := strconv.Itoa(5)
 
-		maxPrice := session["maxPrice"].(string)
+	url := "http://svcs.ebay.com/services/search/FindingService/v1?OPERATION-NAME=findItemsByKeywords&SERVICE-VERSION=1.0.0&SECURITY-APPNAME=TheLuxur-TheLuxur-PRD-45d705b3d-83824180&RESPONSE-DATA-FORMAT=JSON&REST-PAYLOAD&paginationInput.entriesPerPage=" + numOfResults + "&keywords=" + keyword
 
-		message1 := strings.Replace(session["searchByKeyword"].(string), " ", "%20", -1)
-		numOfResults := strconv.Itoa(2)
-		url := "http://svcs.ebay.com/services/search/FindingService/v1?OPERATION-NAME=findItemsByKeywords&SERVICE-VERSION=1.0.0&SECURITY-APPNAME=TheLuxur-TheLuxur-PRD-45d705b3d-83824180&RESPONSE-DATA-FORMAT=JSON&REST-PAYLOAD&paginationInput.entriesPerPage=" + numOfResults + "&keywords=" + message1
-		filterIndex := 0
-		if !strings.EqualFold(session["condition"].(string), "all") {
-			url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=Condition&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + condition
-			filterIndex++
-		}
+	filterIndex := 0
 
-		if !strings.EqualFold(session["minPrice"].(string), "all") {
-			url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=MinPrice&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + minPrice
-			filterIndex++
-		}
+	if !strings.EqualFold(session["condition"].(string), "none") {
+		url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=Condition&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + condition
+		filterIndex++
+	}
 
-		if !strings.EqualFold(session["maxPrice"].(string), "all") {
-			url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=MaxPrice&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + maxPrice
-			filterIndex++
-		}
+	if !strings.EqualFold(session["minPrice"].(string), "none") {
+		url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=MinPrice&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + minPrice
+		filterIndex++
+	}
 
-		spaceClient := http.Client{
-			Timeout: time.Second * 300, // Maximum of 2 secs
-		}
+	if !strings.EqualFold(session["maxPrice"].(string), "none") {
+		url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=MaxPrice&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + maxPrice
+	}
 
-		req, err := http.NewRequest(http.MethodGet, url, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
+	spaceClient := http.Client{
+		Timeout: time.Second * 2, // Maximum of 2 secs
+	}
 
-		res, getErr := spaceClient.Do(req)
-		if getErr != nil {
-			log.Fatal(getErr)
-		}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		body, readErr := ioutil.ReadAll(res.Body)
-		if readErr != nil {
-			log.Fatal(readErr)
-		}
+	res, getErr := spaceClient.Do(req)
+	if getErr != nil {
+		log.Fatal(getErr)
+	}
 
-		js, jsonErr := simplejson.NewJson([]byte(body))
-		if jsonErr != nil {
-			log.Fatal(jsonErr)
-		}
-		simplifiedData1, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("searchResult").GetIndex(0).Get("item").Array() // simplifiedData1 is the array of items fetched
-		error, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("ack").GetIndex(0).String()
-		if strings.EqualFold(error, "failure") {
-			errorMessage, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("errorMessage").GetIndex(0).Get("error").GetIndex(0).Get("message").GetIndex(0).String()
-			response := errorMessage + "<br> What are you looking for? say something like 'Gucci Tshirt' "
+	body, readErr := ioutil.ReadAll(res.Body)
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	js, jsonErr := simplejson.NewJson([]byte(body))
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	// Handle Error
+	handleError(js, session, w)
+
+	//Handle the case where the number of items fetched is 0
+	handleCaseZero(js, session, w)
+
+	//Gerenate Response
+	generateResponse(js, session, w, numOfResults)
+
+}
+
+//Helper methods
+
+func filterByCondition(session Session, message string, w http.ResponseWriter) int {
+	_, found1 := session["conditionBool"]
+	if !found1 {
+		session["conditionBool"] = false
+	}
+	_, found2 := session["condition"]
+	if !found2 {
+		//Respond with question about condition
+		if !session["conditionBool"].(bool) {
 			writeJSON(w, JSON{
-				"message": response,
+				"message": "Please specify the condition of the required item. (New, Used or None)",
+				"session": session,
 			})
-			for k := range session {
-				delete(session, k)
-			}
-			return
-		}
-		//populate FetchedData struct
-		var f FetchedData
-		for _, element := range simplifiedData1 {
-			element1 := element.(map[string]interface{})
-			item1 := Item{ID: element1["itemId"].([]interface{})[0].(string),
-				GalleryURL: element1["galleryURL"].([]interface{})[0].(string),
-				ItemURL:    element1["viewItemURL"].([]interface{})[0].(string),
-				Title:      element1["title"].([]interface{})[0].(string),
-				Condition:  element1["condition"].([]interface{})[0].(map[string]interface{})["conditionDisplayName"].([]interface{})[0].(string),
-				Price:      element1["sellingStatus"].([]interface{})[0].(map[string]interface{})["currentPrice"].([]interface{})[0].(map[string]interface{})["__value__"].(string)}
-			f.Items = append(f.Items, item1)
-		}
+			session["conditionBool"] = true
+			return 1
+		} else {
+			session["condition"] = message
 
-		//Respond with the array of items
-		// writeJSON(w, JSON{
-		// 	"message": f,
-		// 	"session": session,
-		// })
-		response := "There are 2 items matching your criteria : "
-		for index, element := range f.Items {
-			response = response + "<br> Item " + strconv.Itoa(index+1) + " Title : " + element.Title + "<br> Item " + strconv.Itoa(index+1) + " Condition : " + element.Condition
-			response = response + "<br> Item " + strconv.Itoa(index+1) + " Price : " + element.Price + "<br> Item " + strconv.Itoa(index+1) + " Gallery URL :<a href='" + element.GalleryURL + "'>" + element.ItemURL + "</a>"
-			response = response + "<br> Item " + strconv.Itoa(index+1) + " Item URL :<a href='" + element.ItemURL + "'>" + element.ItemURL + "</a>"
+			if strings.EqualFold(session["condition"].(string), "new") {
+				session["condition"] = "New"
+			} else if strings.EqualFold(session["condition"].(string), "used") {
+				session["condition"] = "Used"
+			}
 		}
-		response += "<br> What are you looking for? say something like 'Gucci Tshirt' "
+	}
+	return 0
+}
+
+func filterByMinPrice(session Session, message string, w http.ResponseWriter) int {
+	_, found3 := session["minPriceBool"]
+	if !found3 {
+		session["minPriceBool"] = false
+	}
+	_, found4 := session["minPrice"]
+	if !found4 {
+		//Respond with question about condition
+		if !session["minPriceBool"].(bool) {
+			writeJSON(w, JSON{
+				"message": "Please specify the minimum price of the required item. (None in case you dont want to filter with minimum price)",
+				"session": session,
+			})
+			session["minPriceBool"] = true
+			return 1
+		} else {
+			session["minPrice"] = message
+		}
+	}
+	return 0
+}
+
+func filterByMaxPrice(session Session, message string, w http.ResponseWriter) int {
+	_, found5 := session["maxPriceBool"]
+	if !found5 {
+		session["maxPriceBool"] = false
+	}
+	_, found6 := session["maxPrice"]
+	if !found6 {
+		//Respond with question about condition
+		if !session["maxPriceBool"].(bool) {
+			writeJSON(w, JSON{
+				"message": "Please specify the maximum price of the required item. (None in case you dont want to filter with maximum price)",
+				"session": session,
+			})
+			session["maxPriceBool"] = true
+			return 1
+		} else {
+			session["maxPrice"] = message
+		}
+	}
+	return 0
+}
+
+func handleError(js *simplejson.Json, session Session, w http.ResponseWriter) {
+	error, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("ack").GetIndex(0).String()
+	if strings.EqualFold(error, "failure") {
+		errorMessage, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("errorMessage").GetIndex(0).Get("error").GetIndex(0).Get("message").GetIndex(0).String()
+		response := errorMessage + "<br>  What else would you like to search for? "
 		writeJSON(w, JSON{
 			"message": response,
 		})
@@ -291,11 +314,54 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 			delete(session, k)
 		}
 		return
-	} else {
-		//Next question
+	}
+}
+
+func handleCaseZero(js *simplejson.Json, session Session, w http.ResponseWriter) {
+	itemCount, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("searchResult").GetIndex(0).Get("@count").String()
+	itemCount1, _ := strconv.Atoi(itemCount)
+	if itemCount1 == 0 {
+		response := "There are no items matching your criteria. <br> What else would you like to search for? "
 		writeJSON(w, JSON{
-			"message": "What are u looking for?",
+			"message": response,
 		})
+		for k := range session {
+			delete(session, k)
+		}
 		return
 	}
+}
+
+func generateResponse(js *simplejson.Json, session Session, w http.ResponseWriter, numOfResults string) {
+	simplifiedData1, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("searchResult").GetIndex(0).Get("item").Array() // simplifiedData1 is the array of items fetched
+	pageURL, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("itemSearchURL").GetIndex(0).String()                   // ebay results page url
+
+	//populate FetchedData struct
+	var f FetchedData
+	for _, element := range simplifiedData1 {
+		element1 := element.(map[string]interface{})
+		item1 := Item{ID: element1["itemId"].([]interface{})[0].(string),
+			GalleryURL: element1["galleryURL"].([]interface{})[0].(string),
+			ItemURL:    element1["viewItemURL"].([]interface{})[0].(string),
+			Title:      element1["title"].([]interface{})[0].(string),
+			Condition:  element1["condition"].([]interface{})[0].(map[string]interface{})["conditionDisplayName"].([]interface{})[0].(string),
+			Price:      element1["sellingStatus"].([]interface{})[0].(map[string]interface{})["currentPrice"].([]interface{})[0].(map[string]interface{})["__value__"].(string),
+			Currency:   element1["sellingStatus"].([]interface{})[0].(map[string]interface{})["currentPrice"].([]interface{})[0].(map[string]interface{})["@currencyId"].(string)}
+		f.Items = append(f.Items, item1)
+	}
+
+	response := "There are " + numOfResults + " items matching your criteria : "
+	for index, element := range f.Items {
+		response += "<br> Item " + strconv.Itoa(index+1) + " Title : " + element.Title + "<br> Item " + strconv.Itoa(index+1) + " Condition : " + element.Condition
+		response += "<br> Item " + strconv.Itoa(index+1) + " Price : " + element.Price + " " + element.Currency + "<br> Item " + strconv.Itoa(index+1) + " Gallery : <a href='" + element.GalleryURL + "'>" + element.ItemURL + "</a>"
+		response += "<br> Item " + strconv.Itoa(index+1) + " URL : <a href='" + element.ItemURL + "'>" + element.ItemURL + "</a><br>"
+	}
+	response += "<br> Results Page URL : <a href='" + pageURL + "'>" + pageURL + "</a> <br>  What else would you like to search for?"
+	writeJSON(w, JSON{
+		"message": response,
+	})
+	for k := range session {
+		delete(session, k)
+	}
+	return
 }
