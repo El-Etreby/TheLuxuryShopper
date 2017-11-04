@@ -218,13 +218,22 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 	}
 
 	// Handle Error
-	handleError(js, session, w)
+	returnValue4 := handleError(js, session, w)
+	if returnValue4 == 1 {
+		return
+	}
 
 	//Handle the case where the number of items fetched is 0
-	handleCaseZero(js, session, w)
+	returnValue5 := handleCaseZero(js, session, w)
+	if returnValue5 == 1 {
+		return
+	}
 
 	//Gerenate Response
-	generateResponse(js, session, w, numOfResults)
+	returnValue6 := generateResponse(js, session, w, numOfResults)
+	if returnValue6 == 1 {
+		return
+	}
 
 }
 
@@ -302,10 +311,11 @@ func filterByMaxPrice(session Session, message string, w http.ResponseWriter) in
 	return 0
 }
 
-func handleError(js *simplejson.Json, session Session, w http.ResponseWriter) {
+func handleError(js *simplejson.Json, session Session, w http.ResponseWriter) int {
 	error, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("ack").GetIndex(0).String()
 	if strings.EqualFold(error, "failure") {
 		errorMessage, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("errorMessage").GetIndex(0).Get("error").GetIndex(0).Get("message").GetIndex(0).String()
+		fmt.Println(errorMessage)
 		response := errorMessage + "<br>  What else would you like to search for? "
 		writeJSON(w, JSON{
 			"message": response,
@@ -313,11 +323,12 @@ func handleError(js *simplejson.Json, session Session, w http.ResponseWriter) {
 		for k := range session {
 			delete(session, k)
 		}
-		return
+		return 1
 	}
+	return 0
 }
 
-func handleCaseZero(js *simplejson.Json, session Session, w http.ResponseWriter) {
+func handleCaseZero(js *simplejson.Json, session Session, w http.ResponseWriter) int {
 	itemCount, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("searchResult").GetIndex(0).Get("@count").String()
 	itemCount1, _ := strconv.Atoi(itemCount)
 	if itemCount1 == 0 {
@@ -328,11 +339,12 @@ func handleCaseZero(js *simplejson.Json, session Session, w http.ResponseWriter)
 		for k := range session {
 			delete(session, k)
 		}
-		return
+		return 1
 	}
+	return 0
 }
 
-func generateResponse(js *simplejson.Json, session Session, w http.ResponseWriter, numOfResults string) {
+func generateResponse(js *simplejson.Json, session Session, w http.ResponseWriter, numOfResults string) int {
 	simplifiedData1, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("searchResult").GetIndex(0).Get("item").Array() // simplifiedData1 is the array of items fetched
 	pageURL, _ := js.Get("findItemsByKeywordsResponse").GetIndex(0).Get("itemSearchURL").GetIndex(0).String()                   // ebay results page url
 
@@ -363,5 +375,5 @@ func generateResponse(js *simplejson.Json, session Session, w http.ResponseWrite
 	for k := range session {
 		delete(session, k)
 	}
-	return
+	return 1
 }
