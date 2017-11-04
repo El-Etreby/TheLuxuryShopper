@@ -231,6 +231,7 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 //Helper methods
 
 func filterByCondition(session Session, message string, w http.ResponseWriter) int {
+	fmt.Print("in")
 	_, found1 := session["conditionBool"]
 	if !found1 {
 		session["conditionBool"] = false
@@ -252,7 +253,16 @@ func filterByCondition(session Session, message string, w http.ResponseWriter) i
 				session["condition"] = "New"
 			} else if strings.EqualFold(session["condition"].(string), "used") {
 				session["condition"] = "Used"
+			} else if !strings.EqualFold(session["condition"].(string), "none") {
+				fmt.Println(session)
+				delete(session, "condition")
+				delete(session, "conditionBool")
+				fmt.Println(session)
+				writeJSON(w, JSON{
+					"message": "Please specify the condition of the required item. (New, Used or None)",
+				})
 			}
+
 		}
 	}
 	return 0
