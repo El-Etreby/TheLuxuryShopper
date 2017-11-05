@@ -148,10 +148,11 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 	//Check if there is already an existing value assigned to searchByKeyword in this session
 	_, found := session["searchByKeyword"]
 	if !found {
+		//Id we didnt find searchByKeyword in this session, that means that this message is the answer of the first question
 		session["searchByKeyword"] = message
 	}
 
-	//Filter search by keyword
+	//Filter results
 	returnValue := filterByCondition(session, message, w)
 	if returnValue == 1 {
 		return
@@ -175,7 +176,9 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 
 	numOfResults := strconv.Itoa(5)
 
-	url := "http://svcs.ebay.com/services/search/FindingService/v1?OPERATION-NAME=findItemsByKeywords&SERVICE-VERSION=1.0.0&SECURITY-APPNAME=TheLuxur-TheLuxur-PRD-45d705b3d-83824180&RESPONSE-DATA-FORMAT=JSON&REST-PAYLOAD&paginationInput.entriesPerPage=" + numOfResults + "&keywords=" + keyword
+	endpointURL := "http://svcs.ebay.com/services/search/FindingService/v1?OPERATION-NAME=findItemsByKeywords&SERVICE-VERSION=1.0.0&SECURITY-APPNAME=TheLuxur-TheLuxur-PRD-45d705b3d-83824180&RESPONSE-DATA-FORMAT=JSON&REST-PAYLOAD&paginationInput.entriesPerPage="
+
+	url := endpointURL + numOfResults + "&keywords=" + keyword
 
 	filterIndex := 0
 
