@@ -88,7 +88,7 @@ func handleWelcome(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	sessions[uuid] = Session{}
 
 	writeJSON(w, JSON{
-		"message": "Welcome to The Luxury Shopper.<br> What are you looking for? say something like 'Gucci Tshirt' ",
+		"message": "Welcome to The Luxury Shopper.\n What are you looking for? say something like 'Gucci Tshirt' ",
 		"uuid":    uuid,
 	})
 }
@@ -196,9 +196,7 @@ func sampleProcessor(session Session, message string, w http.ResponseWriter) {
 		url += "&itemFilter(" + strconv.Itoa(filterIndex) + ").name=MaxPrice&itemFilter(" + strconv.Itoa(filterIndex) + ").value=" + maxPrice
 	}
 
-	spaceClient := http.Client{
-		Timeout: time.Second * 2, // Maximum of 2 secs
-	}
+	spaceClient := http.Client{}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -331,13 +329,8 @@ func handleError(js *simplejson.Json, session Session, w http.ResponseWriter) in
 		if err != nil {
 			log.Fatal(err)
 		}
-		response := errorMessage + "<br>  What else would you like to search for? "
+		response := errorMessage + "\n  What else would you like to search for? "
 		http.Error(w, response, http.StatusBadRequest)
-		// w.WriteHeader(http.StatusInternalServerError)
-		// In case json response is needed
-		// writeJSON(w, JSON{
-		// 	"message": response,
-		// })
 		//Reset session in case an error occured
 		for k := range session {
 			delete(session, k)
@@ -357,7 +350,7 @@ func handleCaseZero(js *simplejson.Json, session Session, w http.ResponseWriter)
 		log.Fatal(err)
 	}
 	if itemCount1 == 0 {
-		response := "There are no items matching your criteria. <br> What else would you like to search for? "
+		response := "There are no items matching your criteria. \n What else would you like to search for? "
 		writeJSON(w, JSON{
 			"message": response,
 		})
@@ -404,13 +397,13 @@ func generateResponse(js *simplejson.Json, session Session, w http.ResponseWrite
 	if numOfFetchedResults1 < 5 {
 		numOfResults = numOfFetchedResults
 	}
-	response := "There are " + numOfResults + " items matching your criteria : <br>"
+	response := "There are " + numOfResults + " items matching your criteria : \n"
 	for index, element := range f.Items {
-		response += "<br> Item " + strconv.Itoa(index+1) + " Title : " + element.Title + "<br> Item " + strconv.Itoa(index+1) + " Condition : " + element.Condition
-		response += "<br> Item " + strconv.Itoa(index+1) + " Price : " + element.Price + " " + element.Currency + "<br> Item " + strconv.Itoa(index+1) + " Gallery : <img src='" + element.GalleryURL + "'>" + "</img>"
-		response += "<br> Item " + strconv.Itoa(index+1) + " URL : <a href='" + element.ItemURL + "'target='_blank' style='color:#c48843;'>" + element.ItemURL + "</a><br>"
+		response += "\n Item " + strconv.Itoa(index+1) + " Title : " + element.Title + "\n Item " + strconv.Itoa(index+1) + " Condition : " + element.Condition
+		response += "\n Item " + strconv.Itoa(index+1) + " Price : " + element.Price + " " + element.Currency + "\n Item " + strconv.Itoa(index+1) + " Gallery : " + element.GalleryURL
+		response += "\n Item " + strconv.Itoa(index+1) + " URL : " + element.ItemURL + "\n"
 	}
-	response += "<br> Results Page URL : <a href='" + pageURL + "'target='_blank' style='color:#c48843;'>" + pageURL + "</a> <br><br> What else would you like to search for?"
+	response += "\n Results Page URL : " + pageURL + "\n\n What else would you like to search for?"
 	writeJSON(w, JSON{
 		"message": response,
 	})
